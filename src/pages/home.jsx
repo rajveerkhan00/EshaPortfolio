@@ -3,6 +3,8 @@ import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { getAuth, signOut } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 
 // Define all animation keyframes and styles outside the component
 const globalStyles = `
@@ -120,9 +122,26 @@ export default function Home() {
     profileImage: ""
   });
 
+  // State for sections management
   const [sections, setSections] = useState([]);
+  const [educationItems, setEducationItems] = useState([]);
+  const [skillsItems, setSkillsItems] = useState([]);
+  const [projectsItems, setProjectsItems] = useState([]);
+  
   const sectionRefs = useRef([]);
   const animationStates = useRef({});
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    const auth = getAuth();
+    try {
+      await signOut(auth);
+      console.log("Logged out successfully");
+      navigate("/");
+    } catch (error) {
+      console.error("Error logging out:", error);
+    }
+  };
 
   // Inject global styles
   useEffect(() => {
@@ -153,101 +172,84 @@ export default function Home() {
     fetchPortfolioData();
   }, []);
 
-  // Fetch sections from Firebase
+  // Fetch all data from Firebase
   useEffect(() => {
-    const fetchSections = async () => {
+    const fetchData = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "portfolioSections"));
+        // Fetch sections
+        const sectionsSnapshot = await getDocs(collection(db, "portfolioSections"));
         const sectionsData = [];
-        querySnapshot.forEach((doc) => {
+        sectionsSnapshot.forEach((doc) => {
           sectionsData.push({ id: doc.id, ...doc.data() });
         });
         sectionsData.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         setSections(sectionsData);
+        
+        // Fetch education items
+        const educationSnapshot = await getDocs(collection(db, "education"));
+        const educationData = [];
+        educationSnapshot.forEach((doc) => {
+          educationData.push({ id: doc.id, ...doc.data() });
+        });
+        setEducationItems(educationData);
+        
+        // Fetch skills items
+        const skillsSnapshot = await getDocs(collection(db, "skills"));
+        const skillsData = [];
+        skillsSnapshot.forEach((doc) => {
+          skillsData.push({ id: doc.id, ...doc.data() });
+        });
+        setSkillsItems(skillsData);
+        
+        // Fetch projects items
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const projectsData = [];
+        projectsSnapshot.forEach((doc) => {
+          projectsData.push({ id: doc.id, ...doc.data() });
+        });
+        setProjectsItems(projectsData);
+        
+        toast.success("Data loaded successfully!");
       } catch (error) {
-        console.error("Error fetching sections: ", error);
+        toast.error("Failed to load data");
+        console.error("Error fetching data: ", error);
       }
     };
-    fetchSections();
+    fetchData();
   }, []);
 
-  // Intersection Observer for scroll animations with reset capability
+  // Intersection Observer for scroll animations
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          const section = entry.target;
-          const sectionId = section.dataset.sectionId;
+          const element = entry.target;
+          const animation = element.dataset.animate;
           
           if (entry.isIntersecting) {
-            // Reset animation state when section comes into view
-            animationStates.current[sectionId] = false;
+            // Reset animation classes
+            element.classList.remove(`animate-${animation}`);
+            void element.offsetWidth; // Trigger reflow
             
-            // Only trigger animation if it hasn't been shown yet for this intersection
-            if (!animationStates.current[sectionId]) {
-              const animation = section.dataset.animation;
-              
-              // Reset any previous animation classes
-              section.className = section.className.replace(/\banimate-\w+\b/g, '');
-              section.style.opacity = animation === "none" ? "1" : "0";
-              
-              // Apply the appropriate animation
-              if (animation === "letterByLetter") {
-                const heading = section.querySelector(".animated-heading");
-                const paragraph = section.querySelector(".animated-paragraph");
-                
-                if (heading) {
-                  const text = heading.textContent;
-                  heading.textContent = "";
-                  for (let i = 0; i < text.length; i++) {
-                    setTimeout(() => {
-                      heading.textContent += text[i];
-                    }, i * 50);
-                  }
-                }
-                
-                if (paragraph) {
-                  const text = paragraph.textContent;
-                  paragraph.textContent = "";
-                  for (let i = 0; i < text.length; i++) {
-                    setTimeout(() => {
-                      paragraph.textContent += text[i];
-                    }, i * 20);
-                  }
-                }
-              } else if (animation !== "none") {
-                section.classList.add(`animate-${animation}`);
-                section.style.opacity = "1";
-              }
-              
-              animationStates.current[sectionId] = true;
-            }
-          } else {
-            // When section leaves view, reset its animation state
-            animationStates.current[sectionId] = false;
-            
-            // Reset opacity for non-animated sections
-            const animation = section.dataset.animation;
-            if (animation !== "none") {
-              section.style.opacity = "0";
-              section.className = section.className.replace(/\banimate-\w+\b/g, '');
+            // Apply the animation
+            if (animation) {
+              element.classList.add(`animate-${animation}`);
             }
           }
         });
       },
-      { threshold: 0.1 }
+      { threshold: 0.2 }
     );
 
-    // Observe all section refs
-    sectionRefs.current.forEach((ref) => {
-      if (ref) observer.observe(ref);
+    // Observe all elements with data-animate attribute
+    document.querySelectorAll('[data-animate]').forEach(el => {
+      observer.observe(el);
     });
 
     return () => {
       observer.disconnect();
-      animationStates.current = {};
     };
-  }, [sections]);
+  }, [sections, educationItems, skillsItems, projectsItems]);
 
   // Get alignment classes
   const getAlignmentClasses = (position) => {
@@ -270,20 +272,19 @@ export default function Home() {
 
   // Get line spacing class
   const getLineSpacingClass = (spacing) => {
-    const options = [
-      { value: "tighter", class: "leading-tight" },
-      { value: "tight", class: "leading-snug" },
-      { value: "normal", class: "leading-normal" },
-      { value: "relaxed", class: "leading-relaxed" },
-      { value: "loose", class: "leading-loose" },
-      { value: "6", class: "leading-6" },
-      { value: "7", class: "leading-7" },
-      { value: "8", class: "leading-8" },
-      { value: "9", class: "leading-9" },
-      { value: "10", class: "leading-10" }
-    ];
-    const option = options.find(opt => opt.value === spacing);
-    return option ? option.class : "leading-normal";
+    const options = {
+      "tighter": "leading-tight",
+      "tight": "leading-snug",
+      "normal": "leading-normal",
+      "relaxed": "leading-relaxed",
+      "loose": "leading-loose",
+      "6": "leading-6",
+      "7": "leading-7",
+      "8": "leading-8",
+      "9": "leading-9",
+      "10": "leading-10"
+    };
+    return options[spacing] || "leading-normal";
   };
 
   return (
@@ -303,50 +304,190 @@ export default function Home() {
       
       <div className="min-h-screen flex flex-col text-white relative pb-20">
         {/* Header */}
-       <header className="bg-transparent text-white shadow-md sticky top-0 z-50 mt-10">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-    {/* Left: Profile Image and Header Text */}
-    <div className="flex items-center gap-4">
-      {portfolioData.profileImage && (
-        <img 
-          src={portfolioData.profileImage} 
-          alt="Profile" 
-          className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500"
-        />
-      )}
-      <div className="text-2xl font-bold">
-        <span className="text-indigo-500">{portfolioData.headerText}</span>
-      </div>
-    </div>
+        <header className="bg-transparent text-white shadow-md sticky top-0 z-50 mt-4 sm:mt-10">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-4 flex items-center justify-between gap-2 overflow-x-auto whitespace-nowrap">
+            {/* Left: Profile and Header Text */}
+            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+              {portfolioData.profileImage && (
+                <div className="relative shrink-0">
+                  <img 
+                    src={portfolioData.profileImage} 
+                    alt="Profile" 
+                    className="w-8 h-8 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-indigo-500"
+                  />
+                </div>
+              )}
 
-    {/* Right: Login Button as <a> tag */}
-    <div>
-      <a
-        href="/login"
-        className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition duration-300"
-      >
-        Login
-      </a>
-    </div>
-  </div>
-</header>
+              <div className="text-lg sm:text-2xl font-bold shrink-0">
+                <span className="text-indigo-500">{portfolioData.headerText}</span>
+              </div>
+            </div>
+
+            {/* Right: Buttons */}
+            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+              <button
+                onClick={handleLogout}
+                className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-2 sm:px-3 py-1 rounded"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
 
         {/* Hero Section */}
         <main className="flex-1 px-6 py-20 bg-transparent">
-          <div className="flex flex-col justify-center items-center text-center">
-            <h1 className="text-4xl md:text-6xl font-bold mb-4">
-              Hi, I'm <span className="text-indigo-500">{portfolioData.name}</span>
+          <div className="flex flex-col justify-center items-center text-center px-4 sm:px-6 md:px-8 py-8">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 break-words">
+              Hi, I'm <span className="text-indigo-500 break-words">{portfolioData.name}</span>
             </h1>
-            <p className="text-lg md:text-xl text-gray-300 max-w-xl mb-8">
-              {portfolioData.title}
+
+            <p className="text-base sm:text-lg md:text-xl text-gray-300 max-w-xs sm:max-w-md md:max-w-xl mb-8">
+              <span className="whitespace-pre-line">{portfolioData.title}</span>
             </p>
           </div>
 
-          {/* Sections Content */}
+          {/* Education Section */}
+          <div className="w-[90%] max-w-screen-xl mx-auto my-12 p-6 bg-gray-900 rounded-lg shadow-lg">
+            <h2 className="text-2xl md:text-3xl font-bold text-indigo-400 mb-6">Education</h2>
+            
+            {educationItems.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">No education entries added yet.</p>
+            ) : (
+              <div className="space-y-6">
+                {educationItems.map((edu, index) => (
+                  <div 
+                    key={edu.id}
+                    ref={el => sectionRefs.current[index] = el}
+                    data-section-id={edu.id}
+                    data-animate="flipInX"
+                    className="p-4 bg-gray-700 rounded-lg border-l-4 border-indigo-500"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    <div>
+                      <h3 className="text-xl font-bold">{edu.degree}</h3>
+                      <p className="text-gray-300">{edu.institution}</p>
+                      {edu.year && <p className="text-gray-400 text-sm">{edu.year}</p>}
+                      {edu.description && <p className="mt-2 text-gray-300">{edu.description}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Skills Section */}
+          <div className="w-[90%] max-w-screen-xl mx-auto my-12 p-6 bg-gray-900 rounded-lg shadow-lg">
+            <h2 className="text-2xl md:text-3xl font-bold text-indigo-400 mb-6">Skills</h2>
+            
+            {skillsItems.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">No skills added yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {skillsItems.map((skill, index) => (
+                  <div 
+                    key={skill.id}
+                    ref={el => sectionRefs.current[index] = el}
+                    data-section-id={skill.id}
+                    data-animate="flipInX"
+                    className="p-4 bg-gray-700 rounded-lg border-l-4 border-indigo-500"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    <div>
+                      <h3 className="text-lg font-bold">{skill.name}</h3>
+                      <div className="flex items-center mt-1">
+                        <span 
+                          className="text-xs bg-indigo-600 px-2 py-1 rounded mr-2"
+                          data-animate="flipInX"
+                          style={{ animationDelay: `${index * 0.1 + 0.1}s` }}
+                        >
+                          {skill.category}
+                        </span>
+                        <span 
+                          className="text-xs bg-gray-600 px-2 py-1 rounded"
+                          data-animate="flipInX"
+                          style={{ animationDelay: `${index * 0.1 + 0.2}s` }}
+                        >
+                          {skill.level}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Projects Section */}
+          <div className="w-[90%] max-w-screen-xl mx-auto my-12 p-6 bg-gray-900 rounded-lg shadow-lg">
+            <h2 className="text-2xl md:text-3xl font-bold text-indigo-400 mb-6">Projects</h2>
+            
+            {projectsItems.length === 0 ? (
+              <p className="text-gray-400 text-center py-4">No projects added yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {projectsItems.map((project, index) => (
+                  <div 
+                    key={project.id}
+                    ref={el => sectionRefs.current[index] = el}
+                    data-section-id={project.id}
+                    data-animate="flipInX"
+                    className="p-4 bg-gray-700 rounded-lg border-l-4 border-indigo-500"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    <div>
+                      <h3 
+                        className="text-xl font-bold"
+                        data-animate="flipInX"
+                        style={{ animationDelay: `${index * 0.1 + 0.1}s` }}
+                      >
+                        {project.title}
+                      </h3>
+                      <p 
+                        className="text-gray-300 mt-2"
+                        data-animate="flipInX"
+                        style={{ animationDelay: `${index * 0.1 + 0.2}s` }}
+                      >
+                        {project.description}
+                      </p>
+                      {project.technologies && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {project.technologies.split(',').map((tech, i) => (
+                            <span 
+                              key={i} 
+                              className="text-xs bg-gray-600 px-2 py-1 rounded"
+                              data-animate="flipInX"
+                              style={{ animationDelay: `${index * 0.1 + 0.3 + i * 0.05}s` }}
+                            >
+                              {tech.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {project.link && (
+                        <a 
+                          href={project.link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-block mt-3 text-indigo-400 hover:text-indigo-300 text-sm"
+                          data-animate="flipInX"
+                          style={{ animationDelay: `${index * 0.1 + 0.4}s` }}
+                        >
+                          View Project →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Other Sections Content */}
           <div className="mt-12">
             {sections.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-gray-400">No sections available.</p>
+                <p className="text-gray-400">No additional sections added yet.</p>
               </div>
             ) : (
               sections.map((section, index) => (

@@ -3,6 +3,8 @@ import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, getDoc, setDoc 
 import { db } from "../firebase";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { getAuth, signOut } from "firebase/auth";
+import { useNavigate } from "react-router-dom";
 
 // Define all animation keyframes and styles outside the component
 const globalStyles = `
@@ -126,6 +128,10 @@ export default function Home() {
 
   // State for sections management
   const [sections, setSections] = useState([]);
+  const [educationItems, setEducationItems] = useState([]);
+  const [skillsItems, setSkillsItems] = useState([]);
+  const [projectsItems, setProjectsItems] = useState([]);
+  
   const [newSection, setNewSection] = useState({
     heading: "",
     paragraph: "",
@@ -144,11 +150,42 @@ export default function Home() {
     paragraphMargin: "mb-8",
     customClasses: ""
   });
+
+  const [newEducation, setNewEducation] = useState({
+    degree: "",
+    institution: "",
+    year: "",
+    description: ""
+  });
+
+  const [newSkill, setNewSkill] = useState({
+    name: "",
+    level: "Intermediate",
+    category: "Technical"
+  });
+
+  const [newProject, setNewProject] = useState({
+    title: "",
+    description: "",
+    technologies: "",
+    link: ""
+  });
+
   const [editingId, setEditingId] = useState(null);
+  const [editingEducationId, setEditingEducationId] = useState(null);
+  const [editingSkillId, setEditingSkillId] = useState(null);
+  const [editingProjectId, setEditingProjectId] = useState(null);
+  
   const [showForm, setShowForm] = useState(false);
+  const [showEducationForm, setShowEducationForm] = useState(false);
+  const [showSkillsForm, setShowSkillsForm] = useState(false);
+  const [showProjectsForm, setShowProjectsForm] = useState(false);
   
   // Refs
   const formRef = useRef(null);
+  const educationFormRef = useRef(null);
+  const skillsFormRef = useRef(null);
+  const projectsFormRef = useRef(null);
   const sectionRefs = useRef([]);
   const animationStates = useRef({});
 
@@ -156,7 +193,6 @@ export default function Home() {
   const animations = [
     { value: "fadeIn", label: "Fade In" },
     { value: "slideUp", label: "Slide Up" },
-    { value: "letterByLetter", label: "Letter by Letter" },
     { value: "bounceIn", label: "Bounce In" },
     { value: "zoomIn", label: "Zoom In" },
     { value: "fadeInLeft", label: "Fade In Left" },
@@ -208,6 +244,19 @@ export default function Home() {
     { value: "4xlarge", label: "4X Large", class: "mb-16" },
     { value: "auto", label: "Auto", class: "mb-auto" }
   ];
+const navigate = useNavigate();
+
+const handleLogout = async () => {
+  const auth = getAuth();
+  try {
+    await signOut(auth);
+    console.log("Logged out successfully");
+    navigate("/"); // Redirect to /home after logout
+  } catch (error) {
+    console.error("Error logging out:", error);
+  }
+};
+
 
   // Text size options
   const textSizes = {
@@ -232,6 +281,22 @@ export default function Home() {
       { value: "3xl", label: "Even Larger" }
     ]
   };
+
+  // Skill levels
+  const skillLevels = [
+    { value: "Beginner", label: "Beginner" },
+    { value: "Intermediate", label: "Intermediate" },
+    { value: "Advanced", label: "Advanced" },
+    { value: "Expert", label: "Expert" }
+  ];
+
+  // Skill categories
+  const skillCategories = [
+    { value: "Technical", label: "Technical" },
+    { value: "Soft", label: "Soft" },
+    { value: "Language", label: "Language" },
+    { value: "Other", label: "Other" }
+  ];
 
   // Inject global styles
   useEffect(() => {
@@ -273,10 +338,35 @@ export default function Home() {
         });
         sectionsData.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         setSections(sectionsData);
-        toast.success("Sections loaded successfully!");
+        
+        // Fetch education items
+        const educationSnapshot = await getDocs(collection(db, "education"));
+        const educationData = [];
+        educationSnapshot.forEach((doc) => {
+          educationData.push({ id: doc.id, ...doc.data() });
+        });
+        setEducationItems(educationData);
+        
+        // Fetch skills items
+        const skillsSnapshot = await getDocs(collection(db, "skills"));
+        const skillsData = [];
+        skillsSnapshot.forEach((doc) => {
+          skillsData.push({ id: doc.id, ...doc.data() });
+        });
+        setSkillsItems(skillsData);
+        
+        // Fetch projects items
+        const projectsSnapshot = await getDocs(collection(db, "projects"));
+        const projectsData = [];
+        projectsSnapshot.forEach((doc) => {
+          projectsData.push({ id: doc.id, ...doc.data() });
+        });
+        setProjectsItems(projectsData);
+        
+        toast.success("Data loaded successfully!");
       } catch (error) {
-        toast.error("Failed to load sections");
-        console.error("Error fetching sections: ", error);
+        toast.error("Failed to load data");
+        console.error("Error fetching data: ", error);
       }
     };
     fetchSections();
@@ -358,7 +448,7 @@ export default function Home() {
       observer.disconnect();
       animationStates.current = {};
     };
-  }, [sections]);
+  }, [sections, educationItems, skillsItems, projectsItems]);
 
   // Save portfolio data to Firebase
   const savePortfolioData = async () => {
@@ -380,52 +470,75 @@ export default function Home() {
     }));
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // Updated handleImageUpload function
+const handleImageUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    setUploading(true);
+  setUploading(true);
+  
+  try {
+    // Cloudinary upload
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "esha_portfolio"); // Replace with your actual upload preset
     
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", "esha_portfolio"); // Replace with your actual upload preset
-      
-      // Make sure to use your actual cloud name
-      const response = await fetch(
-        "https://api.cloudinary.com/v1_1/YOUR_CLOUD_NAME/image/upload",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/image/upload`,
+      {
+        method: "POST",
+        body: formData,
       }
+    );
 
-      const data = await response.json();
-      setPortfolioData(prev => ({
-        ...prev,
-        profileImage: data.secure_url
-      }));
-      toast.success("Image uploaded successfully!");
-      
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      toast.error("Failed to upload image. Please try again.");
-    } finally {
-      setUploading(false);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
 
-  const removeImage = () => {
+    const data = await response.json();
+    const imageUrl = data.secure_url;
+
+    // Save to Firebase
+    await updateDoc(doc(db, "portfolio", "content"), {
+      profileImage: imageUrl
+    });
+
+    // Update local state
+    setPortfolioData(prev => ({
+      ...prev,
+      profileImage: imageUrl
+    }));
+    
+    toast.success("Image uploaded successfully!");
+    
+  } catch (error) {
+    console.error("Error uploading image:", error);
+    toast.error("Failed to upload image. Please try again.");
+  } finally {
+    setUploading(false);
+  }
+};
+
+// Updated removeImage function
+const removeImage = async () => {
+  try {
+    // Update Firebase
+    await updateDoc(doc(db, "portfolio", "content"), {
+      profileImage: ""
+    });
+
+    // Update local state
     setPortfolioData(prev => ({
       ...prev,
       profileImage: ""
     }));
+    
     toast.success("Image removed successfully!");
-  };
+  } catch (error) {
+    console.error("Error removing image:", error);
+    toast.error("Failed to remove image");
+  }
+};
 
   // Reset section form
   const resetSectionForm = () => {
@@ -449,6 +562,41 @@ export default function Home() {
     });
     setEditingId(null);
     setShowForm(false);
+  };
+
+  // Reset education form
+  const resetEducationForm = () => {
+    setNewEducation({
+      degree: "",
+      institution: "",
+      year: "",
+      description: ""
+    });
+    setEditingEducationId(null);
+    setShowEducationForm(false);
+  };
+
+  // Reset skills form
+  const resetSkillsForm = () => {
+    setNewSkill({
+      name: "",
+      level: "Intermediate",
+      category: "Technical"
+    });
+    setEditingSkillId(null);
+    setShowSkillsForm(false);
+  };
+
+  // Reset projects form
+  const resetProjectsForm = () => {
+    setNewProject({
+      title: "",
+      description: "",
+      technologies: "",
+      link: ""
+    });
+    setEditingProjectId(null);
+    setShowProjectsForm(false);
   };
 
   // Add new section
@@ -477,6 +625,84 @@ export default function Home() {
     }
   };
 
+  // Add new education item
+  const addEducation = async () => {
+    if (!newEducation.degree || !newEducation.institution) {
+      toast.warning("Please fill in degree and institution");
+      return;
+    }
+    
+    try {
+      const docRef = await addDoc(collection(db, "education"), {
+        ...newEducation,
+        createdAt: new Date().toISOString()
+      });
+      
+      setEducationItems([...educationItems, {
+        id: docRef.id,
+        ...newEducation
+      }]);
+      
+      resetEducationForm();
+      toast.success("Education added successfully!");
+    } catch (e) {
+      toast.error("Failed to add education");
+      console.error("Error adding education: ", e);
+    }
+  };
+
+  // Add new skill
+  const addSkill = async () => {
+    if (!newSkill.name) {
+      toast.warning("Please fill in skill name");
+      return;
+    }
+    
+    try {
+      const docRef = await addDoc(collection(db, "skills"), {
+        ...newSkill,
+        createdAt: new Date().toISOString()
+      });
+      
+      setSkillsItems([...skillsItems, {
+        id: docRef.id,
+        ...newSkill
+      }]);
+      
+      resetSkillsForm();
+      toast.success("Skill added successfully!");
+    } catch (e) {
+      toast.error("Failed to add skill");
+      console.error("Error adding skill: ", e);
+    }
+  };
+
+  // Add new project
+  const addProject = async () => {
+    if (!newProject.title || !newProject.description) {
+      toast.warning("Please fill in title and description");
+      return;
+    }
+    
+    try {
+      const docRef = await addDoc(collection(db, "projects"), {
+        ...newProject,
+        createdAt: new Date().toISOString()
+      });
+      
+      setProjectsItems([...projectsItems, {
+        id: docRef.id,
+        ...newProject
+      }]);
+      
+      resetProjectsForm();
+      toast.success("Project added successfully!");
+    } catch (e) {
+      toast.error("Failed to add project");
+      console.error("Error adding project: ", e);
+    }
+  };
+
   // Start editing a section
   const startEditing = (section) => {
     setEditingId(section.id);
@@ -500,6 +726,44 @@ export default function Home() {
     });
     setShowForm(true);
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Start editing education
+  const startEditingEducation = (education) => {
+    setEditingEducationId(education.id);
+    setNewEducation({
+      degree: education.degree,
+      institution: education.institution,
+      year: education.year,
+      description: education.description || ""
+    });
+    setShowEducationForm(true);
+    educationFormRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Start editing skill
+  const startEditingSkill = (skill) => {
+    setEditingSkillId(skill.id);
+    setNewSkill({
+      name: skill.name,
+      level: skill.level || "Intermediate",
+      category: skill.category || "Technical"
+    });
+    setShowSkillsForm(true);
+    skillsFormRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Start editing project
+  const startEditingProject = (project) => {
+    setEditingProjectId(project.id);
+    setNewProject({
+      title: project.title,
+      description: project.description,
+      technologies: project.technologies || "",
+      link: project.link || ""
+    });
+    setShowProjectsForm(true);
+    projectsFormRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   // Update section
@@ -527,6 +791,81 @@ export default function Home() {
     }
   };
 
+  // Update education
+  const updateEducation = async () => {
+    if (!editingEducationId || !newEducation.degree || !newEducation.institution) {
+      toast.warning("Please fill in degree and institution");
+      return;
+    }
+    
+    try {
+      await updateDoc(doc(db, "education", editingEducationId), {
+        ...newEducation,
+        updatedAt: new Date().toISOString()
+      });
+      
+      setEducationItems(educationItems.map(item => 
+        item.id === editingEducationId ? { ...item, ...newEducation } : item
+      ));
+      
+      resetEducationForm();
+      toast.success("Education updated successfully!");
+    } catch (e) {
+      toast.error("Failed to update education");
+      console.error("Error updating education: ", e);
+    }
+  };
+
+  // Update skill
+  const updateSkill = async () => {
+    if (!editingSkillId || !newSkill.name) {
+      toast.warning("Please fill in skill name");
+      return;
+    }
+    
+    try {
+      await updateDoc(doc(db, "skills", editingSkillId), {
+        ...newSkill,
+        updatedAt: new Date().toISOString()
+      });
+      
+      setSkillsItems(skillsItems.map(item => 
+        item.id === editingSkillId ? { ...item, ...newSkill } : item
+      ));
+      
+      resetSkillsForm();
+      toast.success("Skill updated successfully!");
+    } catch (e) {
+      toast.error("Failed to update skill");
+      console.error("Error updating skill: ", e);
+    }
+  };
+
+  // Update project
+  const updateProject = async () => {
+    if (!editingProjectId || !newProject.title || !newProject.description) {
+      toast.warning("Please fill in title and description");
+      return;
+    }
+    
+    try {
+      await updateDoc(doc(db, "projects", editingProjectId), {
+        ...newProject,
+        updatedAt: new Date().toISOString()
+      });
+      
+      setProjectsItems(projectsItems.map(item => 
+        item.id === editingProjectId ? { ...item, ...newProject } : item
+      ));
+      
+      resetProjectsForm();
+      toast.success("Project updated successfully!");
+    } catch (e) {
+      toast.error("Failed to update project");
+      console.error("Error updating project: ", e);
+    }
+  };
+
   // Delete section
   const deleteSection = async (id) => {
     if (!window.confirm("Are you sure you want to delete this section?")) return;
@@ -540,6 +879,79 @@ export default function Home() {
       console.error("Error deleting section: ", e);
     }
   };
+
+  // Delete education
+  const deleteEducation = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this education entry?")) return;
+    
+    try {
+      await deleteDoc(doc(db, "education", id));
+      setEducationItems(educationItems.filter(item => item.id !== id));
+      toast.success("Education deleted successfully!");
+    } catch (e) {
+      toast.error("Failed to delete education");
+      console.error("Error deleting education: ", e);
+    }
+  };
+
+  // Delete skill
+  const deleteSkill = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this skill?")) return;
+    
+    try {
+      await deleteDoc(doc(db, "skills", id));
+      setSkillsItems(skillsItems.filter(item => item.id !== id));
+      toast.success("Skill deleted successfully!");
+    } catch (e) {
+      toast.error("Failed to delete skill");
+      console.error("Error deleting skill: ", e);
+    }
+  };
+
+  // Delete project
+  const deleteProject = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this project?")) return;
+    
+    try {
+      await deleteDoc(doc(db, "projects", id));
+      setProjectsItems(projectsItems.filter(item => item.id !== id));
+      toast.success("Project deleted successfully!");
+    } catch (e) {
+      toast.error("Failed to delete project");
+      console.error("Error deleting project: ", e);
+    }
+  };
+useEffect(() => {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const element = entry.target;
+        const animation = element.dataset.animate;
+        
+        if (entry.isIntersecting) {
+          // Reset animation classes
+          element.classList.remove(`animate-${animation}`);
+          void element.offsetWidth; // Trigger reflow
+          
+          // Apply the animation
+          if (animation) {
+            element.classList.add(`animate-${animation}`);
+          }
+        }
+      });
+    },
+    { threshold: 0.2 }
+  );
+
+  // Observe all elements with data-animate attribute
+  document.querySelectorAll('[data-animate]').forEach(el => {
+    observer.observe(el);
+  });
+
+  return () => {
+    observer.disconnect();
+  };
+}, [sections, educationItems, skillsItems, projectsItems]);
 
   // Get alignment classes
   const getAlignmentClasses = (position) => {
@@ -584,133 +996,356 @@ export default function Home() {
       <div className="min-h-screen flex flex-col text-white relative pb-20">
 
         {/* Header */}
-        <header className="bg-transparent text-white shadow-md sticky top-0 z-50 mt-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div className="flex items-center gap-4">
-              {portfolioData.profileImage ? (
-                <div className="relative">
-                  <img 
-                    src={portfolioData.profileImage} 
-                    alt="Profile" 
-                    className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500"
-                  />
-                  {isEditing && (
-                    <button 
-                      onClick={removeImage}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ) : isEditing ? (
-                <div className="relative">
-                  <label className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center cursor-pointer">
-                    <input 
-                      type="file" 
-                      onChange={handleImageUpload} 
-                      className="hidden" 
-                      accept="image/*"
-                      disabled={uploading}
-                    />
-                    {uploading ? (
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                    ) : (
-                      <span className="text-2xl">+</span>
-                    )}
-                  </label>
-                </div>
-              ) : null}
-              <div className="text-2xl font-bold">
-                {isEditing ? (
-                  <input
-                    type="text"
-                    name="headerText"
-                    value={portfolioData.headerText}
-                    onChange={handlePortfolioChange}
-                    className="bg-gray-800 text-white p-1 rounded"
-                  />
-                ) : (
-                  <span className="text-indigo-500">{portfolioData.headerText}</span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setIsEditing(!isEditing)}
-                className="text-sm bg-indigo-600 hover:bg-indigo-700 px-3 py-1 rounded"
-              >
-                {isEditing ? "Cancel" : "Edit Header"}
-              </button>
-              {isEditing && (
-                <button
-                  onClick={savePortfolioData}
-                  className="text-sm bg-green-600 hover:bg-green-700 px-3 py-1 rounded"
-                >
-                  Save Header
-                </button>
-              )}
-              <div className="md:hidden">
-                <button
-                  onClick={() => setIsOpen(!isOpen)}
-                  className="hover:text-indigo-400"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d={isOpen
-                        ? "M6 18L18 6M6 6l12 12"
-                        : "M4 6h16M4 12h16M4 18h16"} />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-          {isOpen && (
-            <div className="md:hidden bg-transparent px-4 pb-4 space-y-2 font-medium">
-              <a href="#about" className="block hover:text-indigo-400">About</a>
-              <a href="#projects" className="block hover:text-indigo-400">Projects</a>
-              <a href="#skills" className="block hover:text-indigo-400">Skills</a>
-              <a href="#contact" className="block hover:text-indigo-400">Contact</a>
-            </div>
+      <header className="bg-transparent text-white shadow-md sticky top-0 z-50 mt-4 sm:mt-10">
+  <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-4 flex items-center justify-between gap-2 overflow-x-auto whitespace-nowrap">
+    
+    {/* Left: Profile and Header Text */}
+    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+      {portfolioData.profileImage ? (
+        <div className="relative shrink-0">
+          <img 
+            src={portfolioData.profileImage} 
+            alt="Profile" 
+            className="w-8 h-8 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-indigo-500"
+          />
+          {isEditing && (
+            <button 
+              onClick={removeImage}
+              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 sm:w-6 sm:h-6 flex items-center justify-center text-[10px] sm:text-xs"
+            >
+              ×
+            </button>
           )}
-        </header>
+        </div>
+      ) : isEditing ? (
+        <div className="relative shrink-0">
+          <label className="w-8 h-8 sm:w-12 sm:h-12 rounded-full bg-gray-700 flex items-center justify-center cursor-pointer shrink-0">
+            <input 
+              type="file" 
+              onChange={handleImageUpload} 
+              className="hidden" 
+              accept="image/*"
+              disabled={uploading}
+            />
+            {uploading ? (
+              <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+            ) : (
+              <span className="text-lg sm:text-2xl">+</span>
+            )}
+          </label>
+        </div>
+      ) : null}
+
+      <div className="text-lg sm:text-2xl font-bold shrink-0">
+        {isEditing ? (
+          <input
+            type="text"
+            name="headerText"
+            value={portfolioData.headerText}
+            onChange={handlePortfolioChange}
+            className="bg-gray-800 text-white p-1 rounded text-xs sm:text-base w-24 sm:w-auto"
+          />
+        ) : (
+          <span className="text-indigo-500">{portfolioData.headerText}</span>
+        )}
+      </div>
+    </div>
+
+    {/* Right: Buttons */}
+    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+      <button
+        onClick={() => setIsEditing(!isEditing)}
+        className="text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-700 px-2 sm:px-3 py-1 rounded"
+      >
+        {isEditing ? "Cancel" : "Edit"}
+      </button>
+
+      {isEditing && (
+        <button
+          onClick={savePortfolioData}
+          className="text-xs sm:text-sm bg-green-600 hover:bg-green-700 px-2 sm:px-3 py-1 rounded"
+        >
+          Save
+        </button>
+      )}
+
+      <button
+        onClick={handleLogout}
+        className="text-xs sm:text-sm bg-red-600 hover:bg-red-700 px-2 sm:px-3 py-1 rounded"
+      >
+        Logout
+      </button>
+    </div>
+  </div>
+</header>
 
         {/* Hero Section */}
         <main className="flex-1 px-6 py-20 bg-transparent">
-          <div className="flex flex-col justify-center items-center text-center">
-            <h1 className="text-4xl md:text-6xl font-bold mb-4">
-              Hi, I'm {isEditing ? (
-                <input
-                  type="text"
-                  name="name"
-                  value={portfolioData.name}
-                  onChange={handlePortfolioChange}
-                  className="bg-gray-800 text-indigo-500 p-1 rounded w-40 text-center"
-                />
-              ) : (
-                <span className="text-indigo-500">{portfolioData.name}</span>
-              )}
-            </h1>
-            <p className="text-lg md:text-xl text-gray-300 max-w-xl mb-8">
-              {isEditing ? (
-                <textarea
-                  name="title"
-                  value={portfolioData.title}
-                  onChange={handlePortfolioChange}
-                  className="bg-gray-800 text-white p-2 rounded w-full"
-                  rows="3"
-                />
-              ) : (
-                portfolioData.title
-              )}
-            </p>
-          </div>
+          <div className="flex flex-col justify-center items-center text-center px-4 sm:px-6 md:px-8 py-8">
+  <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 break-words">
+    Hi, I'm{" "}
+    {isEditing ? (
+      <input
+        type="text"
+        name="name"
+        value={portfolioData.name}
+        onChange={handlePortfolioChange}
+        className="bg-gray-800 text-indigo-500 p-2 rounded w-48 sm:w-64 md:w-72 text-center text-base sm:text-lg"
+      />
+    ) : (
+      <span className="text-indigo-500 break-words">{portfolioData.name}</span>
+    )}
+  </h1>
 
-          {/* Sections Content */}
+  <p className="text-base sm:text-lg md:text-xl text-gray-300 max-w-xs sm:max-w-md md:max-w-xl mb-8">
+    {isEditing ? (
+      <textarea
+        name="title"
+        value={portfolioData.title}
+        onChange={handlePortfolioChange}
+        className="bg-gray-800 text-white p-2 rounded w-full text-sm sm:text-base"
+        rows="3"
+      />
+    ) : (
+      <span className="whitespace-pre-line">{portfolioData.title}</span>
+    )}
+  </p>
+</div>
+
+{/* Education Section */}
+<div className="w-[90%] max-w-screen-xl mx-auto my-12 p-6 bg-gray-900 rounded-lg shadow-lg">
+  <div className="flex justify-between items-center mb-6">
+    <h2 className="text-2xl md:text-3xl font-bold text-indigo-400">Education</h2>
+    <button
+      onClick={() => setShowEducationForm(true)}
+      className="w-8 h-8 bg-indigo-600 hover:bg-indigo-700 rounded-full flex items-center justify-center"
+      data-animate="flipInX"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+      </svg>
+    </button>
+  </div>
+  
+  {educationItems.length === 0 ? (
+    <p className="text-gray-400 text-center py-4">No education entries added yet.</p>
+  ) : (
+    <div className="space-y-6">
+      {educationItems.map((edu, index) => (
+        <div 
+          key={edu.id}
+          ref={el => sectionRefs.current[index] = el}
+          data-section-id={edu.id}
+          data-animate="flipInX"
+          className="p-4 bg-gray-700 rounded-lg border-l-4 border-indigo-500"
+          style={{ animationDelay: `${index * 0.1}s` }}
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-xl font-bold">{edu.degree}</h3>
+              <p className="text-gray-300">{edu.institution}</p>
+              {edu.year && <p className="text-gray-400 text-sm">{edu.year}</p>}
+              {edu.description && <p className="mt-2 text-gray-300">{edu.description}</p>}
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => startEditingEducation(edu)}
+                className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-xs"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.2}s` }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => deleteEducation(edu.id)}
+                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.3}s` }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+{/* Skills Section */}
+<div className="w-[90%] max-w-screen-xl mx-auto my-12 p-6 bg-gray-900 rounded-lg shadow-lg">
+  <div className="flex justify-between items-center mb-6">
+    <h2 className="text-2xl md:text-3xl font-bold text-indigo-400">Skills</h2>
+    <button
+      onClick={() => setShowSkillsForm(true)}
+      className="w-8 h-8 bg-indigo-600 hover:bg-indigo-700 rounded-full flex items-center justify-center"
+      data-animate="flipInX"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+      </svg>
+    </button>
+  </div>
+  
+  {skillsItems.length === 0 ? (
+    <p className="text-gray-400 text-center py-4">No skills added yet.</p>
+  ) : (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {skillsItems.map((skill, index) => (
+        <div 
+          key={skill.id}
+          ref={el => sectionRefs.current[index] = el}
+          data-section-id={skill.id}
+          data-animate="flipInX"
+          className="p-4 bg-gray-700 rounded-lg border-l-4 border-indigo-500"
+          style={{ animationDelay: `${index * 0.1}s` }}
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-lg font-bold">{skill.name}</h3>
+              <div className="flex items-center mt-1">
+                <span 
+                  className="text-xs bg-indigo-600 px-2 py-1 rounded mr-2"
+                  data-animate="flipInX"
+                  style={{ animationDelay: `${index * 0.1 + 0.1}s` }}
+                >
+                  {skill.category}
+                </span>
+                <span 
+                  className="text-xs bg-gray-600 px-2 py-1 rounded"
+                  data-animate="flipInX"
+                  style={{ animationDelay: `${index * 0.1 + 0.2}s` }}
+                >
+                  {skill.level}
+                </span>
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => startEditingSkill(skill)}
+                className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-xs"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.3}s` }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => deleteSkill(skill.id)}
+                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.4}s` }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+{/* Projects Section */}
+<div className="w-[90%] max-w-screen-xl mx-auto my-12 p-6 bg-gray-900 rounded-lg shadow-lg">
+  <div className="flex justify-between items-center mb-6">
+    <h2 className="text-2xl md:text-3xl font-bold text-indigo-400">Projects</h2>
+    <button
+      onClick={() => setShowProjectsForm(true)}
+      className="w-8 h-8 bg-indigo-600 hover:bg-indigo-700 rounded-full flex items-center justify-center"
+      data-animate="flipInX"
+    >
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+      </svg>
+    </button>
+  </div>
+  
+  {projectsItems.length === 0 ? (
+    <p className="text-gray-400 text-center py-4">No projects added yet.</p>
+  ) : (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {projectsItems.map((project, index) => (
+        <div 
+          key={project.id}
+          ref={el => sectionRefs.current[index] = el}
+          data-section-id={project.id}
+          data-animate="flipInX"
+          className="p-4 bg-gray-700 rounded-lg border-l-4 border-indigo-500"
+          style={{ animationDelay: `${index * 0.1}s` }}
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 
+                className="text-xl font-bold"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.1}s` }}
+              >
+                {project.title}
+              </h3>
+              <p 
+                className="text-gray-300 mt-2"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.2}s` }}
+              >
+                {project.description}
+              </p>
+              {project.technologies && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {project.technologies.split(',').map((tech, i) => (
+                    <span 
+                      key={i} 
+                      className="text-xs bg-gray-600 px-2 py-1 rounded"
+                      data-animate="flipInX"
+                      style={{ animationDelay: `${index * 0.1 + 0.3 + i * 0.05}s` }}
+                    >
+                      {tech.trim()}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {project.link && (
+                <a 
+                  href={project.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-block mt-3 text-indigo-400 hover:text-indigo-300 text-sm"
+                  data-animate="flipInX"
+                  style={{ animationDelay: `${index * 0.1 + 0.4}s` }}
+                >
+                  View Project →
+                </a>
+              )}
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => startEditingProject(project)}
+                className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-xs"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.5}s` }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => deleteProject(project.id)}
+                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                data-animate="flipInX"
+                style={{ animationDelay: `${index * 0.1 + 0.6}s` }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
+          {/* Other Sections Content */}
           <div className="mt-12">
             {sections.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-gray-400">No sections added yet. Click the + button to add your first section.</p>
+                <p className="text-gray-400">No additional sections added yet. Click the + button to add a new section.</p>
               </div>
             ) : (
               sections.map((section, index) => (
@@ -1044,6 +1679,262 @@ export default function Home() {
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium"
                   >
                     Add Section
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add/Edit Education Form */}
+        {showEducationForm && (
+          <div 
+            ref={educationFormRef}
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50"
+            onClick={(e) => e.target === e.currentTarget && resetEducationForm()}
+          >
+            <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <h2 className="text-2xl font-bold mb-6 text-indigo-400">
+                {editingEducationId ? "Edit Education" : "Add Education"}
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Degree/Certificate</label>
+                  <input
+                    type="text"
+                    value={newEducation.degree}
+                    onChange={(e) => setNewEducation({...newEducation, degree: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="e.g. Bachelor of Science in Computer Science"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Institution</label>
+                  <input
+                    type="text"
+                    value={newEducation.institution}
+                    onChange={(e) => setNewEducation({...newEducation, institution: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="e.g. University of Technology"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Year</label>
+                  <input
+                    type="text"
+                    value={newEducation.year}
+                    onChange={(e) => setNewEducation({...newEducation, year: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="e.g. 2018 - 2022"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Description</label>
+                  <textarea
+                    value={newEducation.description}
+                    onChange={(e) => setNewEducation({...newEducation, description: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    rows="3"
+                    placeholder="Optional: Add details about your education"
+                  ></textarea>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                {editingEducationId ? (
+                  <>
+                    <button
+                      onClick={updateEducation}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded font-medium"
+                    >
+                      Update Education
+                    </button>
+                    <button
+                      onClick={resetEducationForm}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={addEducation}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium"
+                  >
+                    Add Education
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add/Edit Skills Form */}
+        {showSkillsForm && (
+          <div 
+            ref={skillsFormRef}
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50"
+            onClick={(e) => e.target === e.currentTarget && resetSkillsForm()}
+          >
+            <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <h2 className="text-2xl font-bold mb-6 text-indigo-400">
+                {editingSkillId ? "Edit Skill" : "Add Skill"}
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Skill Name</label>
+                  <input
+                    type="text"
+                    value={newSkill.name}
+                    onChange={(e) => setNewSkill({...newSkill, name: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="e.g. JavaScript, React, Project Management"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Level</label>
+                    <select
+                      value={newSkill.level}
+                      onChange={(e) => setNewSkill({...newSkill, level: e.target.value})}
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    >
+                      {skillLevels.map(level => (
+                        <option key={level.value} value={level.value}>{level.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Category</label>
+                    <select
+                      value={newSkill.category}
+                      onChange={(e) => setNewSkill({...newSkill, category: e.target.value})}
+                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    >
+                      {skillCategories.map(category => (
+                        <option key={category.value} value={category.value}>{category.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                {editingSkillId ? (
+                  <>
+                    <button
+                      onClick={updateSkill}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded font-medium"
+                    >
+                      Update Skill
+                    </button>
+                    <button
+                      onClick={resetSkillsForm}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={addSkill}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium"
+                  >
+                    Add Skill
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add/Edit Projects Form */}
+        {showProjectsForm && (
+          <div 
+            ref={projectsFormRef}
+            className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50"
+            onClick={(e) => e.target === e.currentTarget && resetProjectsForm()}
+          >
+            <div className="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <h2 className="text-2xl font-bold mb-6 text-indigo-400">
+                {editingProjectId ? "Edit Project" : "Add Project"}
+              </h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Project Title</label>
+                  <input
+                    type="text"
+                    value={newProject.title}
+                    onChange={(e) => setNewProject({...newProject, title: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="e.g. Portfolio Website"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Description</label>
+                  <textarea
+                    value={newProject.description}
+                    onChange={(e) => setNewProject({...newProject, description: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    rows="3"
+                    placeholder="Describe the project and your role in it"
+                  ></textarea>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Technologies Used</label>
+                  <input
+                    type="text"
+                    value={newProject.technologies}
+                    onChange={(e) => setNewProject({...newProject, technologies: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="Comma separated list (e.g. React, Node.js, MongoDB)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Project Link (optional)</label>
+                  <input
+                    type="url"
+                    value={newProject.link}
+                    onChange={(e) => setNewProject({...newProject, link: e.target.value})}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    placeholder="https://example.com"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                {editingProjectId ? (
+                  <>
+                    <button
+                      onClick={updateProject}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded font-medium"
+                    >
+                      Update Project
+                    </button>
+                    <button
+                      onClick={resetProjectsForm}
+                      className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={addProject}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium"
+                  >
+                    Add Project
                   </button>
                 )}
               </div>
