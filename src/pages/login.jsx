@@ -2,21 +2,22 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const navigate = useNavigate(); // 👈 Hook for redirection
+  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      alert("Login successful!");
-      navigate("/adminhome"); // 👈 Redirect to adminhome
+      toast.success("Login successful!");
+      navigate("/adminhome");
     } catch (err) {
-      setError("Invalid email or password.");
+      toast.error("Invalid email or password.");
     }
   };
 
@@ -27,7 +28,7 @@ export default function Login() {
         className="backdrop-blur-sm bg-white/5 p-8 rounded-xl shadow-xl w-full max-w-md"
       >
         <h2 className="text-3xl font-bold text-center mb-6">Welcome Back</h2>
-        {error && <p className="text-red-500 mb-4">{error}</p>}
+
         <input
           type="email"
           placeholder="Email"
@@ -51,6 +52,9 @@ export default function Login() {
           Login
         </button>
       </form>
+
+      {/* 👇 Toastify Container (place once globally in App.js or here) */}
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar />
     </div>
   );
 }
